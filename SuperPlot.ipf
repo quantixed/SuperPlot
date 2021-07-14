@@ -85,12 +85,12 @@ Function SuperPlotPrep(repW,condW,measW)
 	PXPUtils#MakeColorWave(reps,"Packages:SuperPlot:" + spName + ":colorSplitWaveA", alpha = alphaLevel)
 	
 	// we will stay in dfpath and make the superplot
-	SuperPlotEngine(mostCells, reps, nCond, groupWidth, alphaLevel, spName)
+	SuperPlotEngine(mostCells, reps, nCond, groupWidth, alphaLevel, 1, spName)
 End
 
 
-Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, spName)
-	Variable maxCells, nRep, nCond, groupWidth, alphaLevel
+Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, spName)
+	Variable maxCells, nRep, nCond, groupWidth, alphaLevel, addBars
 	String spName
 	
 	String dfPath = "root:Packages:SuperPlot:" + spName
@@ -197,9 +197,14 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, spName)
 		collatedMat[][i] = aveW[p][1]
 
 		// build superplot
+		// add points
 		AppendToGraph/W=$plotName $wName vs xW
 		ModifyGraph/W=$plotName mode($wName)=3,marker($wName)=19
 		ModifyGraph/W=$plotName zColor($wName)={reIndexW,0,nRep,cindexRGB,0,colorSplitWaveA}
+		if(addBars == 1)
+			MakeAndAddBarsForPlot(aveW,plotName,i,groupWidth)
+		endif
+		// add averages per rep/group
 		AppendToGraph/W=$plotName aveW[][1] vs aveW[][0]
 		ModifyGraph/W=$plotName zColor($aveName)={aveW[][2],0,nRep,cindexRGB,0,colorSplitWave}
 		ModifyGraph/W=$plotName mode($aveName)=3,marker($aveName)=19,useMrkStrokeRGB($aveName)=1
@@ -215,6 +220,43 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, spName)
 	DoStatsAndLabel(collatedMat,plotName)
 	
 	SetDataFolder root:
+End
+
+STATIC Function MakeAndAddBarsForPlot(aveW,plotName,condNum,width)
+	Wave aveW
+	String plotName
+	Variable condNum, width
+	// 2D wave xy coords
+	String hbName = "spSum_cond" + num2str(condNum) + "_hBar"
+	Make/O/N=(2,2) $hbName
+	Wave hb = $hbName
+	String vbName = "spSum_cond" + num2str(condNum) + "_vBar"
+	Make/O/N=(2,2) $vbName
+	Wave vb = $vbName
+	String vcName = "spSum_cond" + num2str(condNum) + "_vCap"
+	Make/O/N=(5,2) $vcName
+	Wave vc = $vcName
+
+	WaveStats/RMD=[][1]/Q aveW // not sensitive to NaNs
+	hb[][1] = V_avg
+	hb[0][0] = condNum - width / 2
+	hb[1][0] = condNum + width / 2
+	vb[][0] = condNum
+	vb[0][1] = V_avg - V_sdev
+	vb[1][1] = V_avg + V_sdev
+	vc[0,1][1] = vb[0][1]
+	vc[2][1] = NaN
+	vc[3,4][1] = vb[1][1]
+	vc[0][0] = condNum - width / 4
+	vc[1][0] = condNum + width / 4
+	vc[2][0] = NaN
+	vc[3][0] = condNum - width / 4
+	vc[4][0] = condNum + width / 4
+	AppendToGraph/W=$plotName vb[][1] vs vb[][0]
+	AppendToGraph/W=$plotName vc[][1] vs vc[][0]
+	AppendToGraph/W=$plotName hb[][1] vs hb[][0]
+	ModifyGraph/W=$plotName rgb($vbName)=(0,0,0),rgb($vcName)=(0,0,0),rgb($hbName)=(0,0,0)
+	ModifyGraph/W=$plotName lsize($hbName)=2
 End
 
 
