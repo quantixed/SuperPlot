@@ -3,107 +3,121 @@
 #pragma DefaultTab={3,20,4}		// Set default tab width in Igor Pro 9 and later
 #include "PXPUtils"
 
-Function SuperplotWorkflow()
-	SetDataFolder root:
-	
-	Variable cond = 3
-	Variable reps = 3
-	
-	Prompt cond, "How many conditions?"
-	Prompt reps, "How many reps per condition?"
-	DoPrompt "Specify", cond, reps
-	
-	if (V_flag) 
-		return -1
-	endif
-	
-	Make/O/N=5 paramWave={cond,0,0,0,reps}
-	PXPUtils#MakeColorWave(cond,"colorWave")
-	Superplot_Panel(cond,reps)
+// Make SuperPlots in IGOR Pro
+// SuperPlots were described by Lord et al. (2020) J Cell Biol https://doi.org/10.1083/jcb.202001064
+// This code requires data to be loaded into Igor before execution.
+// The format is three 1D waves:
+//		Reps - numeric - which experimental repeat the measurement comes from
+//		Condition - text - which experimental condition the measurement corresponds to
+//		Measurement - numeric - the measurement itself
+// The naming of the waves does not matter.
+
+////////////////////////////////////////////////////////////////////////
+// Menu items
+////////////////////////////////////////////////////////////////////////
+
+Menu "Macros"
+	Submenu	"SuperPlot"
+		"Make SuperPlot",  SuperplotWorkflow()
+	End
 End
 
-Function TemporarySuperPlotSetup(prefixRep,suffixCond)
-	String prefixRep, suffixCond // lists of both, in order
+////////////////////////////////////////////////////////////////////////
+// Master functions and wrappers
+////////////////////////////////////////////////////////////////////////
+
+Function SuperplotWorkflow()
+//	Superplot_Panel()
+End
+
+////////////////////////////////////////////////////////////////////////
+// Main functions
+////////////////////////////////////////////////////////////////////////
+
+Function SuperPlotPrep(repW,condW,measW)
+	Wave repW
+	Wave/T condW
+	Wave measW
 	
-	Wave/T tw = ListToTextWave(suffixCond,";")
-	MoveWave tw, root:condWave
-	Wave/T/Z condWave = root:condWave
-	Variable nCond = numpnts(condWave)
-	PXPUtils#MakeColorWave(nCond,"colorWave")
-	Variable reps = ItemsInList(prefixRep)
-	String wList, wName, allWName, allIName
+	SetupSuperPlotPackage()
+	String spName = "sp0" // need to have an option to overwrite or make multiple
+	String dfPath = "root:Packages:SuperPlot:" + spName
+	NewDataFolder/O/S $dfPath
+	
+	FindDuplicates/RN=uRepW repW
+	FindDuplicates/RT=uCondW condW
+	Variable reps = numpnts(uRepW)
+	Variable nCond = numpnts(uCondW)
+	// process meas wave using unique rep/cond waves to make group
 	Variable mostCells = 0
-	
-	NewDataFolder/O root:data
-	
 	Variable i,j
 	
-	// make data folders
 	for(i = 0; i < nCond; i += 1)
-		NewDataFolder/O/S $("root:data:" + condWave[i])
-		wList = ""
-		Make/O/N=(reps)/FREE counter // counter number of measurements in each rep for this condition
-		// no allowance here for missing waves i.e. unequal numbers of conditions in reps
+		// retrieve measurements for each condition (use alias for condName)
+		Duplicate/O measW, $(dfPath + ":sum_meas_cond" + num2str(i))
+		Wave condMeasW = $(dfPath + ":sum_meas_cond" + num2str(i))
+		condMeasW[] = (CmpStr(uCondW[i], condW[p]) == 0) ? measW[p] : NaN
+		// retrieve rep no. for each condition - store as "index"
+		Duplicate/O repW, $(dfPath + ":sum_index_cond" + num2str(i))
+		Wave condRepW = $(dfPath + ":sum_index_cond" + num2str(i))
+		condRepW[] = (CmpStr(uCondW[i], condW[p]) == 0) ? repW[p] : NaN
+		// delete other values
+		WaveTransform zapnans condMeasW
+		WaveTransform zapnans condRepW
+		if(numpnts(condMeasW) != numpnts(condRepW))
+			Print "Problem with data for", uCondW[i]
+		endif
+		mostCells = max(mostCells,numpnts(condMeasW))
+		
+		// because reps may be called 1,2,3 or 0,1,2 we need to reindex them from 0
+		Duplicate/O condRepW, $(dfPath + ":sum_rep_cond" + num2str(i))
+		Wave reIndexW = $(dfPath + ":sum_rep_cond" + num2str(i))
 		for(j = 0; j < reps; j += 1)
-			wName = "root:" + StringFromList(j,prefixRep) + "_" + StringFromList(i,suffixCond)
-			Wave w = $wName
-			counter[j] = numpnts(w)
-			wList += wName + ";" // add this wave to our list for concatenation
+			reIndexW[] = (condRepW[p] == uRepW[j]) ? j : reIndexW[p]
 		endfor
-		allWName = "sum_meas_" + StringFromList(i,suffixCond)
-		Concatenate/O wList, $allWName
-		allIName = "sum_index_" + StringFromList(i,suffixCond)
-		Make/O/N=(sum(counter)) $allIName
-		Wave iw = $allIName
-		Integrate counter
-		for(j = 0; j < reps; j += 1)
-			if(j == 0)
-				iw[0,counter[j] - 1] = j
-			else
-				iw[counter[j - 1],counter[j] - 1] = j
-			endif
-		endfor
-		mostCells = max(mostCells,sum(counter))
-		SetDataFolder root:
+		
 	endfor
 	
-	SetDataFolder root:
-	CombinedSuperPlot(mostCells, reps)
+	Variable groupWidth = 0.4 // this is hard-coded for now
+	Variable alphaLevel = PXPUtils#DecideOpacity(mostCells)
+	// colorwave needs to be specific to this df (root: is added by function)
+	PXPUtils#MakeColorWave(reps,"Packages:SuperPlot:" + spName + ":colorSplitWave")
+	PXPUtils#MakeColorWave(reps,"Packages:SuperPlot:" + spName + ":colorSplitWaveA", alpha = alphaLevel)
+	
+	// we will stay in dfpath and make the superplot
+	SuperPlotEngine(mostCells, reps, nCond, groupWidth, alphaLevel, spName)
 End
 
-Function CombinedSuperPlot(mostTracks, reps)
-	Variable mostTracks, reps
-	
-	Wave/T/Z CondWave = root:condWave
-	WAVE/T labelWave = CleanUpCondWave(condWave)
-	Variable cond = numpnts(condWave)
-	Wave/Z colorWave = root:colorWave
 
-	KillWindow/Z SuperPlot_cond
-	Display/N=SuperPlot_cond
-	KillWindow/Z SuperPlot_rep
-	Display/N=SuperPlot_rep
+Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, spName)
+	Variable maxCells, nRep, nCond, groupWidth, alphaLevel
+	String spName
+	
+	String dfPath = "root:Packages:SuperPlot:" + spName
+	if(CmpStr(GetDataFolder(0),dfPath) != 0)
+		SetDataFolder $dfPath
+	endif
+	
+	WAVE/T/Z uCondW
+	Duplicate/O uCondW, labelWave
+	WAVE/Z uRepW,colorSplitWave,colorSplitWaveA
+	
+	String plotName = "p_" + spName
+	KillWindow/Z $plotName
+	Display/N=$plotName
 	Variable nBin, binSize, loBin, hiBin
 	Variable nRow, firstRow, inBin, maxNBin
-	Variable groupWidth = 0.4 // this is hard-coded for now
-	Variable alphaLevel = PXPUtils#DecideOpacity(mostTracks)
-	PXPUtils#MakeColorWave(reps,"colorSplitWave")
-	WAVE/Z colorSplitWave = root:colorSplitWave
-	MakeColorWave(reps,"colorSplitWaveA", alpha = alphaLevel)
-	WAVE/Z colorSplitWaveA = root:colorSplitWaveA
 	String aveName, errName
-	Make/O/N=(reps,cond)/FREE collatedMat
+	// a 2D wave to capture averages
+	Make/O/N=(nRep,nCond)/FREE collatedMat
 	
-	String condName, dataFolderName, wName, wList, speedName
+	String wName, xWName, wList, speedName
+	
 	Variable nTracks
 	Variable i, j
 	
-	for(i = 0; i < cond; i += 1)
-		condName = condWave[i]
-		// go to data folder for each master condition
-		dataFolderName = "root:data:" + condName
-		SetDataFolder $dataFolderName
-		wName = "sum_meas_" + condName
+	for(i = 0; i < nCond; i += 1)
+		wName = "sum_meas_cond" + num2str(i)
 		Wave w = $wName
 		Duplicate/O/FREE w, tempW, keyW
 		keyW[] = p
@@ -112,13 +126,18 @@ Function CombinedSuperPlot(mostTracks, reps)
 		// make wave to store the counts per bin
 		Make/O/N=(nRow)/I/FREE spSum_IntWave
 		Make/O/N=(nRow)/FREE spSum_nWave
-		Make/O/N=(nRow) spSum_xWave = i
+		xWName = "spSum_cond" + num2str(i) + "_xWave"
+		Make/O/N=(nRow) $xWName = i
+		Wave xW = $xWName
 		// make a histogram of w so that we can find the modal bin
+		// We use Freedman-Diaconis method - this (together with width controls splay)
 		Histogram/B=5 w
 		WAVE/Z W_Histogram
 		nBin = numpnts(W_Histogram)
 		binSize = deltax(W_Histogram)
 		maxNbin = WaveMax(W_Histogram) + 1
+		KillWaves W_Histogram
+		
 		for(j = 0; j < nBin; j += 1)
 			loBin = WaveMin(tempW) + (j * binSize)
 			hiBin = WaveMin(tempW) + ((j + 1) * binSize)
@@ -149,70 +168,53 @@ Function CombinedSuperPlot(mostTracks, reps)
 				spSum_nWave[] = (mod(spSum_nWave[p],2) == 0) ? spSum_nWave[p] / maxNBin : (spSum_nWave[p] + 1) / -maxNBin
 			endif
 			// assign to xWave
-			spSum_xWave[] = (numtype(spSum_nWave[p]) != 2) ? i + spSum_nWave[p] * groupWidth : spSum_xWave[p]
+			xW[] = (numtype(spSum_nWave[p]) != 2) ? i + spSum_nWave[p] * groupWidth : xW[p]
 		endfor
 		// make the order of xWave match sum_meas_*
-		Sort keyW, spSum_xWave
-				
-		speedName = "sum_Index_" + condName
-		Wave indexW = $speedName
-		aveName = "spSum_" + condname + "_Ave"
-		Make/O/N=(reps,4) $aveName
-		Wave w1 = $aveName
-		errName = ReplaceString("_Ave",AveName,"_Err")
-		Make/O/N=(reps) $errName
-		Wave w2 = $errName
+		Sort keyW, xW
+		// make reference to the index wave we made previously
+		Wave indexW = $("sum_index_cond" + num2str(i)) // original rep coding from data
+		Wave reIndexW = $("sum_rep_cond" + num2str(i)) // alias based on p (or number of reps 0-based)
+		
+		aveName = "spSum_cond" + num2str(i) + "_Ave"
+		Make/O/N=(nRep,3) $aveName
+		Wave aveW = $aveName
 		// set 1st column to be the x position for the averages
-		w1[][0] = i
-		// y values go in 2nd col and in 3rd col we put the marker types, 4th will be p
-		Make/O/N=(12)/FREE markerW={19,17,16,18,23,29,26,14,8,6,5,7}
-		w1[][2] = markerW[p]
-		w1[][3] = p
-		for(j = 0; j < reps; j += 1)
-			Extract/O/FREE w, extractedValW, indexW == j
+		aveW[][0] = i
+		// y values go in 2nd col and in 3rd col is p (corresponds to reps)
+		aveW[][2] = p
+		
+		for(j = 0; j < nRep; j += 1)
+			Extract/O/FREE w, extractedValW, indexW == uRepW[j]
 			if(DimSize(extractedValW,0) > 0)
 				WaveStats/Q extractedValW
-				w1[j][1] = V_Avg
-				w2[j] = V_sem
+				aveW[j][1] = V_Avg
 			else
-				w1[j][1] = NaN
-				w2[j] = NaN
+				aveW[j][1] = NaN
 			endif
 		endfor
 		// put the means for each repeat for this group into collatedMat (to do stats)
-		collatedMat[][i] = w1[p][1]
-		wName = "sum_meas_" + condName
-		// add to first superplot
-		AppendToGraph/W=SuperPlot_cond $wName vs spSum_xWave
-		ModifyGraph/W=SuperPlot_cond mode($wName)=3,marker($wName)=19
-		ModifyGraph/W=SuperPlot_cond rgb($wName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],alphaLevel)
-		AppendToGraph/W=SuperPlot_cond w1[][1] vs w1[][0]
-		ModifyGraph/W=SuperPlot_cond rgb($aveName)=(0,0,0)
-		ModifyGraph/W=SuperPlot_cond mode($aveName)=3
-		ModifyGraph/W=SuperPlot_cond zmrkNum($aveName)={w1[][2]}
-		// add to other superplot
-		AppendToGraph/W=SuperPlot_rep $wName vs spSum_xWave
-		ModifyGraph/W=SuperPlot_rep mode($wName)=3,marker($wName)=19
-		ModifyGraph/W=SuperPlot_rep zColor($wName)={indexW,0,reps,cindexRGB,0,colorSplitWaveA}
-		AppendToGraph/W=SuperPlot_rep w1[][1] vs w1[][0]
-		ModifyGraph/W=SuperPlot_rep zColor($aveName)={w1[][3],0,reps,cindexRGB,0,colorSplitWave}
-		ModifyGraph/W=SuperPlot_rep mode($aveName)=3,marker($aveName)=19,useMrkStrokeRGB($aveName)=1
-		SetDataFolder root:
+		collatedMat[][i] = aveW[p][1]
+
+		// build superplot
+		AppendToGraph/W=$plotName $wName vs xW
+		ModifyGraph/W=$plotName mode($wName)=3,marker($wName)=19
+		ModifyGraph/W=$plotName zColor($wName)={reIndexW,0,nRep,cindexRGB,0,colorSplitWaveA}
+		AppendToGraph/W=$plotName aveW[][1] vs aveW[][0]
+		ModifyGraph/W=$plotName zColor($aveName)={aveW[][2],0,nRep,cindexRGB,0,colorSplitWave}
+		ModifyGraph/W=$plotName mode($aveName)=3,marker($aveName)=19,useMrkStrokeRGB($aveName)=1
 	endfor
-	Label/W=SuperPlot_cond left "Average speed (\u03BCm/min)"
-	SetAxis/A/N=1/E=1/W=SuperPlot_cond left
+	
 	Make/O/N=(numpnts(labelWave)) labelXWave = p
-	ModifyGraph/W=SuperPlot_cond userticks(bottom)={labelXWave,labelWave}
-	SetAxis/W=SuperPlot_cond bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
-	Label/W=SuperPlot_rep left "Average speed (\u03BCm/min)"
-	SetAxis/A/N=1/E=1/W=SuperPlot_rep left
-	ModifyGraph/W=SuperPlot_rep userticks(bottom)={labelXWave,labelWave}
-	SetAxis/W=SuperPlot_rep bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
+	ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
+	Label/W=$plotName left "Measurement"
+	SetAxis/A/N=1/E=1/W=$plotName left
+	ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
+	SetAxis/W=$plotName bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
 	// do stats
-	DoStatsAndLabel(collatedMat,"SuperPlot_rep")
-	// add superplots to layout
-//	AppendLayoutObject /W=summaryLayout graph SuperPlot_cond
-//	AppendLayoutObject /W=summaryLayout graph SuperPlot_rep
+	DoStatsAndLabel(collatedMat,plotName)
+	
+	SetDataFolder root:
 End
 
 
@@ -336,6 +338,13 @@ End
 ////////////////////////////////////////////////////////////////////////
 // Utility functions
 ////////////////////////////////////////////////////////////////////////
+
+STATIC Function SetupSuperPlotPackage()
+	if(!DatafolderExists("root:Packages:SuperPlot"))
+		NewDataFolder/O root:Packages
+		NewDataFolder/O root:Packages:SuperPlot
+	endif
+End
 
 STATIC Function/WAVE CleanUpCondWave(tw)
 	WAVE/T tw
