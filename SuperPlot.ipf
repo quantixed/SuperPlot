@@ -27,22 +27,32 @@ End
 ////////////////////////////////////////////////////////////////////////
 
 Function SuperplotWorkflow()
-//	Superplot_Panel()
+	SetupSuperPlotPackage()
+	String latestSuperPlotName = findLatestSuperPlotName()
+	Superplot_Panel(latestSuperPlotName)
 End
 
 ////////////////////////////////////////////////////////////////////////
 // Main functions
 ////////////////////////////////////////////////////////////////////////
 
-Function SuperPlotPrep(repW,condW,measW)
+///	@param	repW	1D numeric wave with rep numbers
+///	@param	repW	1D text wave with condition
+///	@param	measW	1D numeric wave with measurements
+///	@param	spName	string - superplot name
+Function SuperPlotPrep(repW,condW,measW,spName)
 	Wave repW
 	Wave/T condW
 	Wave measW
+	String spName
 	
-	SetupSuperPlotPackage()
-	String spName = "sp0" // need to have an option to overwrite or make multiple
 	String dfPath = "root:Packages:SuperPlot:" + spName
-	NewDataFolder/O/S $dfPath
+	// this datafolder should already exist
+	if(!DataFolderExists(dfPath))
+		NewDataFolder/O/S $dfPath
+	else
+		SetDataFolder $dfPath
+	endif
 	
 	FindDuplicates/RN=uRepW repW
 	FindDuplicates/RT=uCondW condW
@@ -88,7 +98,13 @@ Function SuperPlotPrep(repW,condW,measW)
 	SuperPlotEngine(mostCells, reps, nCond, groupWidth, alphaLevel, 1, spName)
 End
 
-
+///	@param	maxCells	variable - the most measurements in any group
+///	@param	nRep	variable - number of repitions
+///	@param	nCond	variable - number of conditions
+///	@param	groupWidth	variable - how wide the points spread on the x-axis
+///	@param	alphaLevel	variable - level of opacity for points
+///	@param	addBars	variable - 0 or 1 to indicate addition of bars
+/// @param	spName	string - superplot name relates to dfname and plotname
 Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, spName)
 	Variable maxCells, nRep, nCond, groupWidth, alphaLevel, addBars
 	String spName
@@ -222,6 +238,10 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars,
 	SetDataFolder root:
 End
 
+///	@param	aveW	wave containing the averages of measurements per rep for one conditions
+///	@param	plotName	string - graph to add the error bar to
+///	@param	condNum	variable relates to condition number and x position
+///	@param	width	variable - called groupwidth above
 STATIC Function MakeAndAddBarsForPlot(aveW,plotName,condNum,width)
 	Wave aveW
 	String plotName
@@ -264,116 +284,89 @@ End
 // Panel functions
 ////////////////////////////////////////////////////////////////////////
 
-///	@param	cond	number of conditions - determines size of box
-///	@param	reps	number of repitions - determines size of box
-Function Superplot_Panel(cond, reps)
-	Variable cond, reps
+Function Superplot_Panel(spName)
+	String spName
+	if(!DatafolderExists("root:Packages:SuperPlot:" + spName))
+		NewDataFolder/O $("root:Packages:SuperPlot:" + spName)
+	endif
 	
-	Wave/Z colorWave = root:colorWave
-	// make global text wave to store paths
-	Make/T/O/N=(cond) condWave // store conditions
-	Make/T/O/N=(reps,cond) waveNameWave
-	
-	String panelName = "WavePicker"
+	String panelName = "Picker_" + spName
 	KillWindow/Z $panelName
-	NewPanel/N=$panelName/K=1/W=(40,40,120 + 200 * cond,150 + 30 * reps) as "Superplot Selection"
+	NewPanel/N=$panelName/K=1/W=(40,40,480,480) as "SuperPlot Selection"
+	
+	// wave selection
+	DrawText/W=$panelName 10,30,"Specify waves for SuperPlot " + spName
+	
+	// repeat Wave
+	TitleBox tb1,pos={40,60},size={115,12},title="Select wave with repeat info:",frame=0
+	Button repBtn,pos={40,80},size={180,20}
+	MakeButtonIntoWSPopupButton(panelName, "repBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
+	// condition Wave
+	TitleBox tb2,pos={40,160},size={115,12},title="Select wave with repeat info:",frame=0
+	Button condBtn,pos={40,180},size={180,20}
+	MakeButtonIntoWSPopupButton(panelName, "condBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
+	// measure Wave
+	TitleBox tb3,pos={40,260},size={115,12},title="Select wave with measurements:",frame=0
+	Button measBtn,pos={40,280},size={180,20}
+	MakeButtonIntoWSPopupButton(panelName, "measBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	
 	// do it button
-	Button DoIt,pos={20,70+30*reps},size={100,20},proc=CSPDoItButtonProc,title="Do It"
-
-	Variable i,j
-	
-	for(i = 0; i < reps; i += 1)
-		// row label
-		DrawText/W=$panelName 10,68+i*30,num2str(i+1)
-		SetDrawEnv fillfgc=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
-		DrawOval/W=$panelName 20,50+i*30,38,68+i*30
-	endfor
-
-	// labelling of columns
-	DrawText/W=$panelName 10,30,"Reps"
-	String buttonName
-	
-	for(i = 0; i < cond; i += 1)
-		DrawText/W=$panelName 80 + 200 * i,30,CondWave[i]
-		for(j = 0; j < reps; j += 1)
-			buttonName = "sel_" + num2str(i) + "_" + num2str(j)
-			Button $buttonName,pos={80 + 200 * i,50+j*30},size={180,20}
-			MakeButtonIntoWSPopupButton(panelName, buttonName, "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
-		endfor
-	endfor
-
+	Button DoIt,pos={330,400},size={100,20},proc=SPButtonProc,title="Do It"
 End
 
-
-Function CSPDoItButtonProc(ctrlName) : ButtonControl
-	String ctrlName
- 	
- 	WAVE/T CondWave, PathWave1
-	Variable okvar = 0
-	
-	strswitch(ctrlName)	
-		case "DoIt" :
-			// check MasterCondWave
-//			okvar = CellMigration#WaveChecker(CondWave)
-			if (okvar == -1)
-				DoAlert 0, "Not all conditions have a name."
-				break
-			endif
-//			okvar = CellMigration#NameChecker(CondWave)
-			if (okvar == -1)
-				DoAlert 0, "Error: Two conditions have the same name."
-				break
-			endif
-//			okvar = CellMigration#WaveChecker(PathWave1)
-			if (okvar == -1)
-				Print "Note that not all conditions have a file to load."
-			endif
-//			LoadSuperPlotSpeedWavesFromMultiplePXPs()
-			KillWindow/Z FilePicker
-	endswitch	
-End
-
+// the function is called by the popup buttons in the panel
 Function PopulateWaveNameWave(event, wavepath, windowName, ctrlName)
 	Variable event
 	String wavepath, windowName, ctrlName
 	
-	String expr = "sel_([[:digit:]]+)_([[:digit:]]+)"
-	String cond, rep
-	SplitString/E=(expr) ctrlName, cond, rep
-	WAVE/Z/T waveNameWave
-	waveNameWave[str2num(rep)][str2num(cond)] = wavepath
-End
-
-Function CDButtonProc(ctrlName) : ButtonControl
-	String ctrlName
-	
-	if(exists("gCDWName") != 2)
-		Abort "Pick a wave to correct."
+	String wName = "root:Packages:SuperPlot:" + ReplaceString("picker_",windowName,"") + ":waveNameWave"
+	WAVE/Z/T waveNameWave = $wName
+	if(!WaveExists(waveNameWave))
+		Make/O/N=(3)/T $wName
+		WAVE/Z/T waveNameWave = $wName
 	endif
 	
-	SVAR CDWName = gCDWName
-	Wave/Z w0 = $CDWName
-	
-	strswitch(ctrlName)
- 
-		case "CDQD"	:
-//			CorrectDrift(w0,0)
-			Print "Using quick and dirty method."
+	strswitch(ctrlName)	
+		case "repBtn" :
+			waveNameWave[0] = wavepath
 			break
- 
-		case "CDLF"	:
-//			CorrectDrift(w0,1)
-			Print "Using line fit method."
+		case "condBtn" :
+			waveNameWave[1] = wavepath
 			break
-		
-		case "CDEF"	:
-//			CorrectDrift(w0,2)
-			Print "Using exponential fit method."
+		case "measBtn" :
+			waveNameWave[2] = wavepath
 			break
+	endswitch
+End
 
-	EndSwitch
-	KillWindow/Z DemoPopupWaveSelectorPanel
+Function SPButtonProc(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	
+	String spName = ReplaceString("picker_",ba.win,"")
+	Wave/Z/T waveNameWave = $("root:Packages:SuperPlot:" + spName + ":waveNameWave")
+	
+	switch(ba.eventCode)
+		case 2 :
+			if(CmpStr(ba.ctrlName,"DoIt") == 0)
+				if(checkWaveNameWave(waveNameWave) == 0)
+					KillWindow/Z $(ba.win)
+					Wave w0 = $(waveNameWave[0])
+					Wave/T w1 = $(waveNameWave[1])
+					Wave w2 = $(waveNameWave[2])
+					SuperPlotPrep(w0,w1,w2,spName)
+//					SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, spName)
+					return 0
+				else
+					return -1
+				endif
+			else
+				return -1
+			endif
+		case -1:
+			break
+	endswitch
+	
+	return 0
 End
 
 
@@ -388,12 +381,34 @@ STATIC Function SetupSuperPlotPackage()
 	endif
 End
 
-STATIC Function/WAVE CleanUpCondWave(tw)
-	WAVE/T tw
-	Duplicate/O tw, root:labelWave
-	tw[] = CleanupName(tw[p],0)
+STATIC Function/S findLatestSuperPlotName()
+	String spDFName
+	Variable i = 0
+	do
+		spDFName = "sp" + num2str(i)
+		if(!DatafolderExists("root:Packages:SuperPlot:" + spDFName))
+			break
+		else
+			i += 1
+		endif
+	while (i < 10) // limit of ten superplots
+	
+	return spDFName
+End
 
-	return root:labelWave
+STATIC Function checkWaveNameWave(tw)
+	WAVE/T tw
+	if(strlen(tw[0]) == 0 || strlen(tw[1]) == 0 || strlen(tw[2]) == 0)
+		DoAlert 0, "Specify all three waves"
+		return -1
+	elseif(CmpStr(tw[0],tw[1]) * CmpStr(tw[0],tw[2]) * CmpStr(tw[1],tw[2]) == 0)
+		DoAlert 0, "One or more input waves are the same"
+		return -1
+	else
+		return 0
+	endif
+	// other error
+	return -1
 End
 
 STATIC Function DoStatsAndLabel(m0,plotName)

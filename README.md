@@ -5,4 +5,6 @@ Working version.
 
 Load data.
 
-Call using `SuperPlotPrep(Replicate,Treatment,Speed)`
+Execute using _Macros > Make SuperPlot_ menu item and select three waves from the panel.
+
+Settings for SuperPlot are currently fixed.
