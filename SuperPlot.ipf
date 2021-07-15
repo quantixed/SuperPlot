@@ -38,23 +38,21 @@ End
 // Main functions
 ////////////////////////////////////////////////////////////////////////
 
-///	@param	repW	1D numeric wave with rep numbers
-///	@param	repW	1D text wave with condition
-///	@param	measW	1D numeric wave with measurements
 ///	@param	spName	string - superplot name
-Function SuperPlotPrep(repW,condW,measW,spName)
-	Wave repW
-	Wave/T condW
-	Wave measW
+Function SuperPlotPrep(spName)
 	String spName
 	
+	// spName tells us the datafolder where the wavenames and parameters are stored	
 	String dfPath = "root:Packages:SuperPlot:" + spName
 	// this datafolder should already exist
-	if(!DataFolderExists(dfPath))
-		NewDataFolder/O/S $dfPath
-	else
-		SetDataFolder $dfPath
-	endif
+	SetDataFolder $dfPath
+	// find the two waves we need to tell SuperPlotPrep what we are doing
+	Wave/T/Z waveNameWave = $(dfPath + ":waveNameWave")
+	Wave/Z paramWave = $(dfPath + ":paramWave")
+	// get the wave references to the data
+	Wave repW = $(waveNameWave[0])
+	Wave/T condW = $(waveNameWave[1])
+	Wave measW = $(waveNameWave[2])
 	
 	FindDuplicates/RN=uRepW repW
 	FindDuplicates/RT=uCondW condW
@@ -90,14 +88,21 @@ Function SuperPlotPrep(repW,condW,measW,spName)
 		
 	endfor
 	
-	Variable groupWidth = 0.4 // this is hard-coded for now
-	Variable alphaLevel = PXPUtils#DecideOpacity(mostCells)
+	// check alpha settings
+	Variable alphaLevel
+	if(paramWave[1] <= 0)
+		alphaLevel = PXPUtils#DecideOpacity(mostCells)
+	elseif (paramWave[1] <=1)
+		alphaLevel = paramWave[1] * 65535
+	else
+		alphaLevel = paramWave[1]
+	endif
 	// colorwave needs to be specific to this df (root: is added by function)
 	PXPUtils#MakeColorWave(reps,"Packages:SuperPlot:" + spName + ":colorSplitWave")
 	PXPUtils#MakeColorWave(reps,"Packages:SuperPlot:" + spName + ":colorSplitWaveA", alpha = alphaLevel)
 	
 	// we will stay in dfpath and make the superplot
-	SuperPlotEngine(mostCells, reps, nCond, groupWidth, alphaLevel, 1, spName)
+	SuperPlotEngine(mostCells, reps, nCond, paramWave[0], alphaLevel, paramWave[2], paramWave[3], spName)
 End
 
 ///	@param	maxCells	variable - the most measurements in any group
@@ -105,10 +110,11 @@ End
 ///	@param	nCond	variable - number of conditions
 ///	@param	groupWidth	variable - how wide the points spread on the x-axis
 ///	@param	alphaLevel	variable - level of opacity for points
-///	@param	addBars	variable - 0 or 1 to indicate addition of bars
+///	@param	addBars	variable - 0 or 1 to indicate addition of bars to graph
+///	@param	addBars	variable - 0 or 1 to indicate addition of stats to graph
 /// @param	spName	string - superplot name relates to dfname and plotname
-Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, spName)
-	Variable maxCells, nRep, nCond, groupWidth, alphaLevel, addBars
+Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, statsChoice, spName)
+	Variable maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, statsChoice
 	String spName
 	
 	String dfPath = "root:Packages:SuperPlot:" + spName
@@ -235,7 +241,9 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars,
 	ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
 	SetAxis/W=$plotName bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
 	// do stats
-	DoStatsAndLabel(collatedMat,plotName)
+	if(statsChoice == 1)
+		DoStatsAndLabel(collatedMat,plotName)
+	endif
 	
 	SetDataFolder root:
 End
@@ -292,28 +300,44 @@ Function Superplot_Panel(spName)
 		NewDataFolder/O $("root:Packages:SuperPlot:" + spName)
 	endif
 	
+	Make/O/N=(4) $("root:Packages:SuperPlot:" + spName + ":paramWave") = {0.4,0,0,1}
+	Wave paramWave = $("root:Packages:SuperPlot:" + spName + ":paramWave")
+	
 	String panelName = "Picker_" + spName
 	KillWindow/Z $panelName
-	NewPanel/N=$panelName/K=1/W=(40,40,480,480) as "SuperPlot Selection"
+	NewPanel/N=$panelName/K=1/W=(40,40,480,400) as "SuperPlot Selection"
 	
 	// wave selection
-	DrawText/W=$panelName 10,30,"Specify waves for SuperPlot " + spName
+	TitleBox tb0,pos={20,20},size={115,20},title="Specify waves for SuperPlot " + spName,fstyle=1,fsize=11,labelBack=(55000,55000,65000),frame=0
 	
 	// repeat Wave
-	TitleBox tb1,pos={40,60},size={115,12},title="Select wave with repeat info:",frame=0
-	Button repBtn,pos={40,80},size={180,20}
+	TitleBox tb1,pos={30,60},size={115,12},title="Select wave with repeat info:",frame=0
+	Button repBtn,pos={30,80},size={180,20}
 	MakeButtonIntoWSPopupButton(panelName, "repBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	// condition Wave
-	TitleBox tb2,pos={40,160},size={115,12},title="Select wave with repeat info:",frame=0
-	Button condBtn,pos={40,180},size={180,20}
+	TitleBox tb2,pos={30,160},size={115,12},title="Select wave with repeat info:",frame=0
+	Button condBtn,pos={30,180},size={180,20}
 	MakeButtonIntoWSPopupButton(panelName, "condBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	// measure Wave
-	TitleBox tb3,pos={40,260},size={115,12},title="Select wave with measurements:",frame=0
-	Button measBtn,pos={40,280},size={180,20}
+	TitleBox tb3,pos={30,260},size={115,12},title="Select wave with measurements:",frame=0
+	Button measBtn,pos={30,280},size={180,20}
 	MakeButtonIntoWSPopupButton(panelName, "measBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	
+	DrawLine 220,40,220,300
+	GroupBox grp0, pos={230,40},size={200,260}
+	// specify settings
+	DrawText/W=$panelName 240,60,"Settings:"
+	// specify width
+	SetVariable box0,pos={240,100},size={180,100},title="Width (default = 0.4)",value=paramWave[0]
+	// specify alpha
+	SetVariable box1,pos={240,150},size={180,150},title="Alpha (auto = 0)",value=paramWave[1]
+	// specify whether to add mean ± sd bars
+	Checkbox box2,pos={240,200},size={180,200},proc=CheckProc,title="Add bars",value=paramWave[2]
+	// specify whether to add stats
+	Checkbox box3,pos={240,250},size={180,250},proc=CheckProc,title="Add stats",value=paramWave[3]
+	
 	// do it button
-	Button DoIt,pos={330,400},size={100,20},proc=SPButtonProc,title="Do It"
+	Button DoIt,pos={330,320},size={100,20},proc=SPButtonProc,title="Do It"
 End
 
 // the function is called by the popup buttons in the panel
@@ -341,22 +365,48 @@ Function PopulateWaveNameWave(event, wavepath, windowName, ctrlName)
 	endswitch
 End
 
+Function CheckProc(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+	
+	String spName = ReplaceString("picker_",cba.win,"")
+	Wave/Z paramWave = $("root:Packages:SuperPlot:" + spName + ":paramWave")
+	
+	switch(cba.eventCode)
+		case 2: // mouse up
+			Variable checked = cba.checked
+			if (checked == 1 && CmpStr(cba.ctrlname,"box2") == 0)
+				paramWave[2] = 1
+			elseif (checked == 0 && CmpStr(cba.ctrlname,"box2") == 0)
+				paramWave[2] = 0
+			endif
+			if (checked == 1 && CmpStr(cba.ctrlname,"box3") == 0)
+				paramWave[3] = 1
+			elseif (checked == 0 && CmpStr(cba.ctrlname,"box3") == 0)
+				paramWave[3] = 0
+			endif
+			break
+        case -1: // control being killed
+            break
+    endswitch
+
+    return 0
+End
+
 Function SPButtonProc(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	
 	String spName = ReplaceString("picker_",ba.win,"")
 	Wave/Z/T waveNameWave = $("root:Packages:SuperPlot:" + spName + ":waveNameWave")
+	if(!WaveExists(waveNameWave))
+		return -1
+	endif
 	
 	switch(ba.eventCode)
 		case 2 :
 			if(CmpStr(ba.ctrlName,"DoIt") == 0)
 				if(checkWaveNameWave(waveNameWave) == 0)
 					KillWindow/Z $(ba.win)
-					Wave w0 = $(waveNameWave[0])
-					Wave/T w1 = $(waveNameWave[1])
-					Wave w2 = $(waveNameWave[2])
-					SuperPlotPrep(w0,w1,w2,spName)
-//					SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars, spName)
+					SuperPlotPrep(spName)
 					return 0
 				else
 					return -1
