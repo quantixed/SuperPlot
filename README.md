@@ -48,10 +48,14 @@ The waves can be named whatever you like and you can make more than one SuperPlo
 
 ## Installation
 
-To install, save a copy of `SuperPlot.ipf` and `PXPUtils.ipf` to *Wavemetrics/Igor Pro 8 User Files/User Procedures*. 
+To install, save a copy of `SuperPlot.ipf` and `PXPUtils.ipf` to *Wavemetrics/Igor Pro 8 User Files/User Procedures* or *Wavemetrics/Igor Pro 9 User Files/User Procedures*
 This directory is usually in `~/Documents/`
+
 Open `SuperPlot.ipf` in Igor by double-clicking it from Finder or selecting *File > Open File > Procedure* in a new Igor experiment.
+
 If the code does not auto-compile, click *Macros > Compile*
+
+`PXPUtils.ipf` can be found [here](https://github.com/quantixed/PXPUtils).
 
 --
 
