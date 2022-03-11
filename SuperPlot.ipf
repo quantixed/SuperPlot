@@ -9,8 +9,10 @@
 // SuperPlots were described by Lord et al. (2020) J Cell Biol https://doi.org/10.1083/jcb.202001064
 // This code requires data to be loaded into Igor before execution.
 // The format is three 1D waves:
-//		Reps - numeric - which experimental repeat the measurement comes from
-//		Condition - text - which experimental condition the measurement corresponds to
+//		Reps - which experimental repeat the measurement comes from
+//			numeric or text input - converted to numeric 0-based
+//		Condition - which experimental condition the measurement corresponds to
+//			numeric or text input - converted to text
 //		Measurement - numeric - the measurement itself
 // The naming of the waves does not matter.
 
@@ -42,6 +44,7 @@ End
 Function SuperPlotPrep(spName)
 	String spName
 	
+	Print "Making", spName
 	// spName tells us the datafolder where the wavenames and parameters are stored	
 	String dfPath = "root:Packages:SuperPlot:" + spName
 	// this datafolder should already exist
@@ -49,13 +52,53 @@ Function SuperPlotPrep(spName)
 	// find the two waves we need to tell SuperPlotPrep what we are doing
 	Wave/T/Z waveNameWave = $(dfPath + ":waveNameWave")
 	Wave/Z paramWave = $(dfPath + ":paramWave")
+	String wtList = ";numeric;text;"
+	Variable wtVar
 	// get the wave references to the data
-	Wave repW = $(waveNameWave[0])
-	Wave/T condW = $(waveNameWave[1])
-	Wave measW = $(waveNameWave[2])
-	
+	// replicate wave - this can be numeric or text - convert to numeric 0-based
+	Wave/Z repW = $(waveNameWave[0])
+	wtVar = WaveType(repW,1)
+	if(wtVar == 2)
+		// replicate wave is text
+		Wave/T/Z repTW = $(waveNameWave[0])
+		FindDuplicates/RT=uRepTW repTW
+	elseif(wtVar == 1)
+		// replicate wave is numeric
+		FindDuplicates/RN=uRepW repW
+	else
+		DoAlert 0, "Wrong wave type"
+		return -1
+	endif
+	Print "Replicate wave:", waveNameWave[0], "-", StringFromList(wtVar,wtList)
+	// convert the wave and reference again
+	waveNameWave[0] = ConvertReplicateWave(wtVar)
+	Wave/Z repW = $(waveNameWave[0])
 	FindDuplicates/RN=uRepW repW
+	
+	// condition wave - must get unique text wave from this
+	Wave/Z possibleCondW = $(waveNameWave[1])
+	wtVar = WaveType(possibleCondW,1)
+	if(wtVar == 2)
+		// condition wave is text
+	elseif(wtVar == 1)
+		// condition wave is numeric
+		waveNameWave[1] = ConvertConditionWave(possibleCondW)
+	else
+		DoAlert 0, "Wrong wave type"
+		return -1
+	endif
+	Print "Condition wave:", waveNameWave[1], "-", StringFromList(wtVar,wtList)
+	Wave/T/Z condW = $(waveNameWave[1])
 	FindDuplicates/RT=uCondW condW
+	
+	// measure wave
+	Wave measW = $(waveNameWave[2])
+	wtVar = WaveType(measW,1)
+	if(wtVar != 1)
+		DoAlert 0, "Wrong wave type"
+		return -1
+	endif
+	
 	Variable reps = numpnts(uRepW)
 	Variable nCond = numpnts(uCondW)
 	// process meas wave using unique rep/cond waves to make group
@@ -78,14 +121,6 @@ Function SuperPlotPrep(spName)
 			Print "Problem with data for", uCondW[i]
 		endif
 		mostCells = max(mostCells,numpnts(condMeasW))
-		
-		// because reps may be called 1,2,3 or 0,1,2 we need to reindex them from 0
-		Duplicate/O condRepW, $(dfPath + ":sum_rep_cond" + num2str(i))
-		Wave reIndexW = $(dfPath + ":sum_rep_cond" + num2str(i))
-		for(j = 0; j < reps; j += 1)
-			reIndexW[] = (condRepW[p] == uRepW[j]) ? j : reIndexW[p]
-		endfor
-		
 	endfor
 	
 	// check alpha settings
@@ -124,7 +159,7 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars,
 	
 	WAVE/T/Z uCondW
 	Duplicate/O uCondW, labelWave
-	WAVE/Z uRepW,colorSplitWave,colorSplitWaveA
+	WAVE/Z uRepW, colorSplitWave, colorSplitWaveA
 	
 	String plotName = "p_" + spName
 	KillWindow/Z $plotName
@@ -198,7 +233,6 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars,
 		Sort keyW, xW
 		// make reference to the index wave we made previously
 		Wave indexW = $("sum_index_cond" + num2str(i)) // original rep coding from data
-		Wave reIndexW = $("sum_rep_cond" + num2str(i)) // alias based on p (or number of reps 0-based)
 		
 		aveName = "spSum_cond" + num2str(i) + "_Ave"
 		Make/O/N=(nRep,3) $aveName
@@ -224,7 +258,7 @@ Function SuperPlotEngine(maxCells, nRep, nCond, groupWidth, alphaLevel, addBars,
 		// add points
 		AppendToGraph/W=$plotName $wName vs xW
 		ModifyGraph/W=$plotName mode($wName)=3,marker($wName)=19
-		ModifyGraph/W=$plotName zColor($wName)={reIndexW,0,nRep,cindexRGB,0,colorSplitWaveA}
+		ModifyGraph/W=$plotName zColor($wName)={indexW,0,nRep,cindexRGB,0,colorSplitWaveA}
 		if(addBars == 1)
 			MakeAndAddBarsForPlot(aveW,plotName,i,groupWidth)
 		endif
@@ -315,7 +349,7 @@ Function Superplot_Panel(spName)
 	Button repBtn,pos={30,80},size={180,20}
 	MakeButtonIntoWSPopupButton(panelName, "repBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	// condition Wave
-	TitleBox tb2,pos={30,160},size={115,12},title="Select wave with repeat info:",frame=0
+	TitleBox tb2,pos={30,160},size={115,12},title="Select wave with condition info:",frame=0
 	Button condBtn,pos={30,180},size={180,20}
 	MakeButtonIntoWSPopupButton(panelName, "condBtn", "PopulateWaveNameWave", options=PopupWS_OptionFloat, content=WMWS_Waves)
 	// measure Wave
@@ -462,6 +496,50 @@ STATIC Function checkWaveNameWave(tw)
 	// other error
 	return -1
 End
+
+STATIC Function/S ConvertReplicateWave(option)
+	Variable option
+	
+	Wave/T/Z waveNameWave
+	String newWaveName
+	Variable repVar, uVar, i
+	if(option == 2)
+		// we have text -> repTW and uRepTW
+		Wave/T/Z repTW = $(waveNameWave[0])
+		WAVE/T/Z uRepTW
+		newWaveName = waveNameWave[0] + "_cnvrt"
+		repVar = numpnts(repTW)
+		uVar = numpnts(uRepTW)
+	else
+		Wave/Z repW = $(waveNameWave[0])
+		WAVE/Z uRepW
+		newWaveName = waveNameWave[0] + "_cnvrt"
+		repVar = numpnts(repW)
+		uVar = numpnts(uRepW)
+	endif
+	
+	Make/O/N=(repVar) $newWaveName = NaN
+	Wave w = $newWaveName
+	
+	for(i = 0; i < uVar; i += 1)
+		if(option == 2)
+			w[] = (CmpStr(uRepTW[i], repTW[p]) == 0) ? i : w[p]
+		else
+			w[] = (uRepW[i] == repW[p]) ? i : w[p]
+		endif
+	endfor	
+	
+	return newWaveName
+End
+
+STATIC Function/S ConvertConditionWave(w)
+	Wave w
+	Wave/T/Z waveNameWave
+	String newWaveName = waveNameWave[1] + "_cnvrt"
+	Make/O/N=(numpnts(w))/T $newWaveName = num2str(w)
+	
+	return newWaveName
+End	
 
 STATIC Function DoStatsAndLabel(m0,plotName)
 	Wave m0

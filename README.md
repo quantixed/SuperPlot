@@ -46,6 +46,8 @@ Assemble your data in three waves where each row is a masurement for the entire 
 
 The waves can be named whatever you like and you can make more than one SuperPlot in an Igor experiment.
 
+Replicates and conditions are converted to numeric and text resepectively and either numeric or text waves can be used as input.
+
 ## Installation
 
 To install, save a copy of `SuperPlot.ipf` and `PXPUtils.ipf` to *Wavemetrics/Igor Pro 8 User Files/User Procedures* or *Wavemetrics/Igor Pro 9 User Files/User Procedures*
@@ -61,4 +63,4 @@ If the code does not auto-compile, click *Macros > Compile*
 
 ### Compatability
 
-This code was developed on IGOR Pro 9 beta. It works on IP8+.
+This code was developed for IGOR Pro 9. It works on IP8+.
