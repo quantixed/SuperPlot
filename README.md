@@ -48,9 +48,15 @@ The waves can be named whatever you like and you can make more than one SuperPlo
 
 Replicates and conditions are converted to numeric and text resepectively and either numeric or text waves can be used as input.
 
+#### Generating lots of SuperPlots
+
+A typical use case would be to make one SuperPlot at a time using the interactive mode described above, however if you want to generate many SuperPlots, programmatically, it is possible to do this using `SuperPlotHeadless()`.
+This is intended for advanced users only (which is, let's face it all Igor users!).
+Note, there is a current limit of 50 SuperPlots per experiment.
+
 ## Installation
 
-To install, save a copy of `SuperPlot.ipf` and `PXPUtils.ipf` to *Wavemetrics/Igor Pro 8 User Files/User Procedures* or *Wavemetrics/Igor Pro 9 User Files/User Procedures*
+To install, save a copy of `SuperPlot.ipf` and `PXPUtils.ipf` to *Wavemetrics/Igor Pro 9 User Files/User Procedures*
 This directory is usually in `~/Documents/`
 
 Open `SuperPlot.ipf` in Igor by double-clicking it from Finder or selecting *File > Open File > Procedure* in a new Igor experiment.
@@ -63,4 +69,4 @@ If the code does not auto-compile, click *Macros > Compile*
 
 ### Compatability
 
-This code was developed for IGOR Pro 9. It works on IP8+.
+This code was developed for IGOR Pro 9. It should work on IP8+.

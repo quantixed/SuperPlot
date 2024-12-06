@@ -15,6 +15,11 @@
 //			numeric or text input - converted to text
 //		Measurement - numeric - the measurement itself
 // The naming of the waves does not matter.
+// 
+// The standard workflow is to make each SuperPlot interactively using a GUI
+// There is the possibility to make SuperPlots "headlessly" i.e. to script the production of many
+// Superplots using the SuperPlotHeadless() function. To use this, all that is needed is wave references
+// to the three 1D waves that make up the superplot and additional parameters (variables) that control the options
 
 ////////////////////////////////////////////////////////////////////////
 // Menu items
@@ -34,6 +39,38 @@ Function SuperplotWorkflow()
 	SetupSuperPlotPackage()
 	String latestSuperPlotName = findLatestSuperPlotName()
 	Superplot_Panel(latestSuperPlotName)
+End
+
+Function SuperPlotHeadless(repW, condW, measW, width, auto, bars, stats)
+	Wave repW, condW, measW
+	Variable width, auto, bars, stats
+	SetupSuperPlotPackage()
+	String spName = findLatestSuperPlotName()
+	
+	if(!DatafolderExists("root:Packages:SuperPlot:" + spName))
+		NewDataFolder/O $("root:Packages:SuperPlot:" + spName)
+	endif
+	
+	Make/O/N=(4) $("root:Packages:SuperPlot:" + spName + ":paramWave") = {width, auto, bars, stats}
+	Wave paramWave = $("root:Packages:SuperPlot:" + spName + ":paramWave")
+	
+	String wName = "root:Packages:SuperPlot:" + spName + ":waveNameWave"
+	WAVE/Z/T waveNameWave = $wName
+	if(!WaveExists(waveNameWave))
+		Make/O/N=(3)/T $wName
+		WAVE/Z/T waveNameWave = $wName
+	endif
+	waveNameWave[0] = GetWavesDataFolder(repW,2)
+	waveNameWave[1] = GetWavesDataFolder(condW,2)
+	waveNameWave[2] = GetWavesDataFolder(measW,2)
+	
+	if(checkWaveNameWave(waveNameWave) == 0)			
+		SuperPlotPrep(spName)
+	else
+		return -1
+	endif
+	
+	
 End
 
 ////////////////////////////////////////////////////////////////////////
@@ -477,7 +514,7 @@ STATIC Function/S findLatestSuperPlotName()
 		else
 			i += 1
 		endif
-	while (i < 10) // limit of ten superplots
+	while (i < 50) // limit of fifty superplots in an expt
 	
 	return spDFName
 End
