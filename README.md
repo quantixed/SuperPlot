@@ -4,14 +4,18 @@ Making SuperPlots in IGOR Pro.
 
 [**Example**](#Example) | [**Workflow**](#Workflow) | [**Installation**](#Installation)
 
-SuperPlots are described in:
+SuperPlots are a way to visualise data in a way that emphasises the
+experimental reproducibility. You can read more about SuperPlots in the
+[original paper](https://doi.org/10.1083/jcb.202001064):
 
-Lord _et al._ SuperPlots: Communicating reproducibility and variability in cell biology. _J. Cell Biol._ (2020) 219(6): e202001064. doi:[10.1083/jcb.202001064](https://doi.org/10.1083/jcb.202001064)
-
+Lord, S.J., Velle, K.B., Mullins, R.D. & Fritz-Laylin, L.K. (2020)
+**SuperPlots: Communicating reproducibility and variability in cell
+biology.** *J. Cell Biol.* 219(6):e202001064
 
 ## Example
 
-An example SuperPlot generated using `SuperPlot.ipf` and the test data. Test data is taken from 
+An example SuperPlot generated using `SuperPlot.ipf` and the test data. Test data is taken from Lord _et al._ (2020)
+
 
 ![img](img/exampleGraph.png?raw=true "image")
 
@@ -70,3 +74,7 @@ If the code does not auto-compile, click *Macros > Compile*
 ### Compatability
 
 This code was developed for IGOR Pro 9. It should work on IP8+.
+
+### R version
+
+An R package SuperPlotR is available [here](https://github.com/quantixed/SuperPlotR).
